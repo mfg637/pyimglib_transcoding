@@ -8,14 +8,9 @@ import abc
 import enum
 import tempfile
 
+from . import config
+
 MAX_SIZE = 16383
-
-
-class Config:
-    pass
-
-
-config = Config()
 
 if config.MAX_SIZE is not None:
     MAX_SIZE = min(16383, config.MAX_SIZE)
