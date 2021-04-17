@@ -4,9 +4,32 @@ import subprocess
 import io
 from . import webp_transcoder, config
 from PIL import Image
+import pyimglib_decoders.YUV4MPEG2
 
 
 class AVIF_WEBP_output(webp_transcoder.WEBP_output, metaclass=abc.ABCMeta):
+
+    def get_color_profile(self):
+        return [
+            '--profile', '1',
+            '--pix-fmt', 'yuv444'
+        ]
+
+    def get_color_profile_by_subsampling(self, subsampling):
+        if subsampling == pyimglib_decoders.YUV4MPEG2.SUPPORTED_COLOR_SPACES.YUV444:
+            return[
+                '--profile', '1',
+                '--pix-fmt', 'yuv444'
+            ]
+        elif subsampling == pyimglib_decoders.YUV4MPEG2.SUPPORTED_COLOR_SPACES.YUV422:
+            return [
+                '--profile', '2',
+                '--pix-fmt', 'yuv422'
+            ]
+        elif subsampling == pyimglib_decoders.YUV4MPEG2.SUPPORTED_COLOR_SPACES.YUV420:
+            return [
+                '--pix-fmt', 'yuv420'
+            ]
 
     def _lossy_encode(self, img:Image.Image) -> None:
         src_tmp_file = None
@@ -47,14 +70,16 @@ class AVIF_WEBP_output(webp_transcoder.WEBP_output, metaclass=abc.ABCMeta):
         ]
         if alpha_tmp_file is not None:
             commandline += ['--attach-alpha', alpha_tmp_file.name]
+        crf = 100 - self._quality
         commandline += [
             '--crf', str(100 - self._quality),
             '--cpu-used', '0',
-            '--profile', '1',
-            '--pix-fmt', 'yuv444',
             '--enable-full-color-range',
             '--enable-cdef'
         ]
+        if crf >= 20:
+            commandline += ['--enable-loop-restoration']
+        commandline += self.get_color_profile()
         if config.avif_encoding_threads is not None and config.avif_encoding_threads > 0:
             commandline += ['--enable-row-mt', '--threads', str(config.avif_encoding_threads)]
         subprocess.run(commandline)

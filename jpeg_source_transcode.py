@@ -1,48 +1,15 @@
 import abc
 import subprocess
-import struct
 import os
-from . import webp_transcoder, base_transcoder
+import io
+from . import webp_transcoder, base_transcoder, avif_transcoder
+import pyimglib_decoders.jpeg
 from PIL import Image
 
 
-is_arithmetic_SOF = {
-    b'\xff\xc0': False,
-    b'\xff\xc1': False,
-    b'\xff\xc2': False,
-    b'\xff\xc3': False,
-    b'\xff\xc5': False,
-    b'\xff\xc6': False,
-    b'\xff\xc7': False,
-    b'\xff\xc8': True,
-    b'\xff\xc9': True,
-    b'\xff\xca': True,
-    b'\xff\xcb': True,
-    b'\xff\xcd': True,
-    b'\xff\xce': True,
-    b'\xff\xcf': True
-}
-
-
 def is_arithmetic_jpg(file_path):
-    file = open(file_path, 'rb')
-    header = file.read(2)
-    if header != b'\xff\xd8':
-        file.close()
-        raise OSError
-    arithmetic = None
-    marker = b"aaa"
-    while len(marker):
-        marker = file.read(2)
-        if marker in is_arithmetic_SOF.keys():
-            file.close()
-            arithmetic = is_arithmetic_SOF[marker]
-            return arithmetic
-        elif len(marker):
-            frame_len = struct.unpack('>H', file.read(2))[0]
-            file.seek(frame_len - 2, 1)
-    file.close()
-    return None
+    jpeg_decoder = pyimglib_decoders.jpeg.JPEGDecoder(file_path)
+    return jpeg_decoder.arithmetic_coding()
 
 
 class JPEGTranscode(webp_transcoder.WEBP_output):
@@ -68,24 +35,30 @@ class JPEGTranscode(webp_transcoder.WEBP_output):
     def get_converter_type(self):
         return None
 
+    def lossless_encode(self):
+        meta_copy = 'all'
+        source_data = self._get_source_data()
+        process = subprocess.Popen(['jpegtran', '-copy', meta_copy, '-arithmetic'],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        process.stdin.write(source_data)
+        process.stdin.close()
+        self._optimized_data = process.stdout.read()
+        process.stdout.close()
+        process.terminate()
+        self._output_size = len(self._optimized_data)
+
+    def size_treshold(self, img):
+        return img.width > 1024 or img.height > 1024
+
     def _encode(self):
         self._arithmetic_check()
         img = self._open_image()
-        if (img.width>1024) or (img.height>1024):
+        if self.size_treshold(img):
             self._webp_output = True
             self._webp_encode(img)
         else:
             img.close()
-            meta_copy = 'all'
-            source_data = self._get_source_data()
-            process = subprocess.Popen(['jpegtran', '-copy', meta_copy, '-arithmetic'],
-                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            process.stdin.write(source_data)
-            process.stdin.close()
-            self._optimized_data = process.stdout.read()
-            process.stdout.close()
-            process.terminate()
-            self._output_size = len(self._optimized_data)
+            self.lossless_encode()
 
     def _save(self):
         if self._webp_output:
@@ -94,6 +67,30 @@ class JPEGTranscode(webp_transcoder.WEBP_output):
             outfile = open(self._output_file + ".jpg", 'wb')
             outfile.write(self._optimized_data)
             outfile.close()
+
+
+class AVIF_JPEG_Tanscoder(JPEGTranscode, avif_transcoder.AVIF_WEBP_output):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, source, path:str, file_name:str, item_data:dict, pipe):
+        JPEGTranscode.__init__(self, source, path, file_name, item_data, pipe)
+        avif_transcoder.AVIF_WEBP_output.__init__(self, source, path, file_name, item_data, pipe)
+
+    def _transparency_check(self, img):
+        return False
+
+    def _encode(self):
+        self._arithmetic_check()
+        img = self._open_image()
+        if self.size_treshold(img):
+            self._webp_output = True
+            avif_transcoder.AVIF_WEBP_output._webp_encode(self, img)
+        else:
+            img.close()
+            self.lossless_encode()
+
+    def _save(self):
+        avif_transcoder.AVIF_WEBP_output._save_webp(self)
 
 
 class JPEGFileTranscode(base_transcoder.FilePathSource, base_transcoder.UnremovableSource, JPEGTranscode):
@@ -149,3 +146,25 @@ class JPEGInMemoryTranscode(base_transcoder.InMemorySource, JPEGTranscode):
 
     def _invalid_file_exception_handle(self, e):
         print('invalid jpeg data')
+
+
+class AVIF_JPEGFileTranscode(AVIF_JPEG_Tanscoder, JPEGFileTranscode):
+    def get_color_profile(self):
+        file = open(self._source, "rb")
+        subsampling = pyimglib_decoders.jpeg.read_frame_data(file)[1]
+        return self.get_color_profile_by_subsampling(subsampling)
+
+    def __init__(self, source: str, path: str, file_name: str, item_data: dict, pipe):
+        JPEGFileTranscode.__init__(self, source, path, file_name, item_data, pipe)
+        AVIF_JPEG_Tanscoder.__init__(self, source, path, file_name, item_data, pipe)
+
+
+class AVIF_JPEGInMemoryTranscode(AVIF_JPEG_Tanscoder, JPEGInMemoryTranscode):
+    def get_color_profile(self):
+        src_io = io.BytesIO(self._source)
+        subsampling = pyimglib_decoders.jpeg.read_frame_data(src_io)[1]
+        return self.get_color_profile_by_subsampling(subsampling)
+
+    def __init__(self, source: bytearray, path: str, file_name: str, item_data: dict, pipe):
+        JPEGInMemoryTranscode.__init__(self, source, path, file_name, item_data, pipe)
+        AVIF_JPEG_Tanscoder.__init__(self, source, path, file_name, item_data, pipe)
