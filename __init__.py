@@ -3,7 +3,7 @@
 
 import os
 
-from . import config, statistics, gif_source_transcode, png_source_transcode, jpeg_source_transcode
+from . import config, statistics, gif_source_transcode, png_source_transcode, jpeg_source_transcode, jpeg_xl_transcoder
 
 
 # derpibooru-dl only
@@ -28,12 +28,20 @@ def get_file_transcoder(source: str, path: str, filename: str, data: dict, pipe=
         else:
             return png_source_transcode.PNGFileTranscode(source, path, filename, data, pipe)
     elif os.path.splitext(source)[1].lower() in {'.jpg', '.jpeg'}:
-        if config.preferred_codec == config.PREFERRED_CODEC.AVIF:
-            return jpeg_source_transcode.JPEGFileTranscode(source, path, filename, data, pipe)
-        elif config.PREFERRED_CODEC.WEBP:
-            return jpeg_source_transcode.JPEGFileTranscode(source, path, filename, data, pipe)
+        if config.jpeg_xl_tools_path is not None:
+            if config.preferred_codec == config.PREFERRED_CODEC.AVIF:
+                return jpeg_xl_transcoder.JPEG_XL_FileTranscoder(source, path, filename, data, pipe)
+            elif config.PREFERRED_CODEC.WEBP:
+                return jpeg_xl_transcoder.JPEG_XL_FileTranscoder(source, path, filename, data, pipe)
+            else:
+                return jpeg_xl_transcoder.JPEG_XL_FileTranscoder(source, path, filename, data, pipe)
         else:
-            return jpeg_source_transcode.JPEGFileTranscode(source, path, filename, data, pipe)
+            if config.preferred_codec == config.PREFERRED_CODEC.AVIF:
+                return jpeg_source_transcode.JPEGFileTranscode(source, path, filename, data, pipe)
+            elif config.PREFERRED_CODEC.WEBP:
+                return jpeg_source_transcode.JPEGFileTranscode(source, path, filename, data, pipe)
+            else:
+                return jpeg_source_transcode.JPEGFileTranscode(source, path, filename, data, pipe)
     elif os.path.splitext(source)[1].lower() == '.gif':
         return gif_source_transcode.GIFFileTranscode(source, path, filename, data, pipe)
 
@@ -68,12 +76,20 @@ def get_memory_transcoder(source: bytearray, path: str, filename: str, data: dic
         else:
             return png_source_transcode.PNGInMemoryTranscode(source, path, filename, data, pipe)
     elif isJPEG(source):
-        if config.preferred_codec == config.PREFERRED_CODEC.AVIF:
-            return jpeg_source_transcode.AVIF_JPEGInMemoryTranscode(source, path, filename, data, pipe)
-        elif config.PREFERRED_CODEC.WEBP:
-            return jpeg_source_transcode.JPEGInMemoryTranscode(source, path, filename, data, pipe)
+        if config.jpeg_xl_tools_path is not None:
+            if config.preferred_codec == config.PREFERRED_CODEC.AVIF:
+                return jpeg_xl_transcoder.AVIF_JPEG_XL_BufferTranscode(source, path, filename, data, pipe)
+            elif config.PREFERRED_CODEC.WEBP:
+                return jpeg_xl_transcoder.JPEG_XL_BurrefedSourceTranscoder(source, path, filename, data, pipe)
+            else:
+                return jpeg_xl_transcoder.JPEG_XL_BurrefedSourceTranscoder(source, path, filename, data, pipe)
         else:
-            return jpeg_source_transcode.JPEGInMemoryTranscode(source, path, filename, data, pipe)
+            if config.preferred_codec == config.PREFERRED_CODEC.AVIF:
+                return jpeg_source_transcode.AVIF_JPEGInMemoryTranscode(source, path, filename, data, pipe)
+            elif config.PREFERRED_CODEC.WEBP:
+                return jpeg_source_transcode.JPEGInMemoryTranscode(source, path, filename, data, pipe)
+            else:
+                return jpeg_source_transcode.JPEGInMemoryTranscode(source, path, filename, data, pipe)
     elif isGIF(source):
         return gif_source_transcode.GIFInMemoryTranscode(source, path, filename, data, pipe)
     else:

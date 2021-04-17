@@ -19,3 +19,5 @@ avif_encoding_threads = 1
 MAX_SIZE = None
 
 enable_multiprocessing = True
+
+jpeg_xl_tools_path = None

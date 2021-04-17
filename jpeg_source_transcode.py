@@ -69,8 +69,12 @@ class JPEGTranscode(webp_transcoder.WEBP_output):
             outfile.close()
 
 
-class AVIF_JPEG_Tanscoder(JPEGTranscode, avif_transcoder.AVIF_WEBP_output):
+class AVIF_JPEG_Transcoder(JPEGTranscode, avif_transcoder.AVIF_WEBP_output):
     __metaclass__ = abc.ABCMeta
+
+    def get_color_profile(self):
+        subsampling = pyimglib_decoders.jpeg.read_frame_data(self._get_source_data())[1]
+        return self.get_color_profile_by_subsampling(subsampling)
 
     def __init__(self, source, path:str, file_name:str, item_data:dict, pipe):
         JPEGTranscode.__init__(self, source, path, file_name, item_data, pipe)
@@ -78,19 +82,6 @@ class AVIF_JPEG_Tanscoder(JPEGTranscode, avif_transcoder.AVIF_WEBP_output):
 
     def _transparency_check(self, img):
         return False
-
-    def _encode(self):
-        self._arithmetic_check()
-        img = self._open_image()
-        if self.size_treshold(img):
-            self._webp_output = True
-            avif_transcoder.AVIF_WEBP_output._webp_encode(self, img)
-        else:
-            img.close()
-            self.lossless_encode()
-
-    def _save(self):
-        avif_transcoder.AVIF_WEBP_output._save_webp(self)
 
 
 class JPEGFileTranscode(base_transcoder.FilePathSource, base_transcoder.UnremovableSource, JPEGTranscode):
@@ -142,29 +133,19 @@ class JPEGInMemoryTranscode(base_transcoder.InMemorySource, JPEGTranscode):
         pass
 
     def _get_source_data(self):
-        return self._source
+        return io.BytesIO(self._source)
 
     def _invalid_file_exception_handle(self, e):
         print('invalid jpeg data')
 
 
-class AVIF_JPEGFileTranscode(AVIF_JPEG_Tanscoder, JPEGFileTranscode):
-    def get_color_profile(self):
-        file = open(self._source, "rb")
-        subsampling = pyimglib_decoders.jpeg.read_frame_data(file)[1]
-        return self.get_color_profile_by_subsampling(subsampling)
-
+class AVIF_JPEGFileTranscode(AVIF_JPEG_Transcoder, JPEGFileTranscode):
     def __init__(self, source: str, path: str, file_name: str, item_data: dict, pipe):
         JPEGFileTranscode.__init__(self, source, path, file_name, item_data, pipe)
-        AVIF_JPEG_Tanscoder.__init__(self, source, path, file_name, item_data, pipe)
+        AVIF_JPEG_Transcoder.__init__(self, source, path, file_name, item_data, pipe)
 
 
-class AVIF_JPEGInMemoryTranscode(AVIF_JPEG_Tanscoder, JPEGInMemoryTranscode):
-    def get_color_profile(self):
-        src_io = io.BytesIO(self._source)
-        subsampling = pyimglib_decoders.jpeg.read_frame_data(src_io)[1]
-        return self.get_color_profile_by_subsampling(subsampling)
-
+class AVIF_JPEGInMemoryTranscode(AVIF_JPEG_Transcoder, JPEGInMemoryTranscode):
     def __init__(self, source: bytearray, path: str, file_name: str, item_data: dict, pipe):
         JPEGInMemoryTranscode.__init__(self, source, path, file_name, item_data, pipe)
-        AVIF_JPEG_Tanscoder.__init__(self, source, path, file_name, item_data, pipe)
+        AVIF_JPEG_Transcoder.__init__(self, source, path, file_name, item_data, pipe)
