@@ -48,43 +48,39 @@ class AVIF_WEBP_output(webp_transcoder.WEBP_output, metaclass=abc.ABCMeta):
             proc = subprocess.Popen(['convert', '-', src_tmp_file_name], stdin=subprocess.PIPE)
             proc.communicate(buf.getbuffer())
             proc.wait()
-        alpha_tmp_file = None
         output_tmp_file = tempfile.NamedTemporaryFile(mode='rb', suffix=".avif", delete=True)
+        crf = 100 - self._quality
+        crf_low = crf + 5
+        commandline = []
         if self._transparency_check(img):
-            alpha_tmp_file = tempfile.NamedTemporaryFile(suffix=".avif", delete=True)
-            subprocess.run([
+            commandline = [
+                'avifenc',
+                src_tmp_file_name,
+                output_tmp_file.name,
+                '-s', '0',
+                '--min', str(crf),
+                '--max', str(crf_low),
+                '--minalpha', '0',
+                '-j', str(config.avif_encoding_threads)
+            ]
+        else:
+            commandline = [
                 'cavif',
                 '-i', src_tmp_file_name,
-                '-o', alpha_tmp_file.name,
-                '--encode-target', 'alpha',
-                '--monochrome',
-                '--lossless',
+                '-o', output_tmp_file.name,
+                '--encode-target', 'image',
+                '--crf', str(100 - self._quality),
                 '--cpu-used', '0',
-                '--enable-full-color-range'
-            ])
-        commandline = [
-            'cavif',
-            '-i', src_tmp_file_name,
-            '-o', output_tmp_file.name,
-            '--encode-target', 'image'
-        ]
-        if alpha_tmp_file is not None:
-            commandline += ['--attach-alpha', alpha_tmp_file.name]
-        crf = 100 - self._quality
-        commandline += [
-            '--crf', str(100 - self._quality),
-            '--cpu-used', '0',
-            '--enable-full-color-range',
-            '--enable-cdef'
-        ]
-        if crf >= 20:
-            commandline += ['--enable-loop-restoration']
-        commandline += self.get_color_profile()
-        if config.avif_encoding_threads is not None and config.avif_encoding_threads > 0:
-            commandline += ['--enable-row-mt', '--threads', str(config.avif_encoding_threads)]
+                '--enable-full-color-range',
+                '--enable-cdef'
+            ]
+            if crf >= 20:
+                commandline += ['--enable-loop-restoration']
+            commandline += self.get_color_profile()
+            if config.avif_encoding_threads is not None and config.avif_encoding_threads > 0:
+                commandline += ['--enable-row-mt', '--threads', str(config.avif_encoding_threads)]
+
         subprocess.run(commandline)
-        if alpha_tmp_file is not None:
-            alpha_tmp_file.close()
         if src_tmp_file is not None:
             src_tmp_file.close()
         self._lossy_data = output_tmp_file.read()
