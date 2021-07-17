@@ -72,7 +72,8 @@ class AVIF_WEBP_output(webp_transcoder.WEBP_output, metaclass=abc.ABCMeta):
                 '--crf', str(100 - self._quality),
                 '--cpu-used', '0',
                 '--enable-full-color-range',
-                '--enable-cdef'
+                '--enable-cdef',
+                '--adaptive-quantization', 'variance'
             ]
             if crf >= 20:
                 commandline += ['--enable-loop-restoration']
